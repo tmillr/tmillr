@@ -1,0 +1,62 @@
+on:
+  push:
+    branches: [ "main" ]
+#   pull_request:
+#     branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  octokit-graphql-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+#       - uses: actions/checkout@v3
+
+      - name: 'TEST: Post discussion comment'
+        env:
+          DISCUSSION_NUMBER: 1
+        run: |
+          npm i --no-save '@actions/github@^5.1.1' '@actions/core@^1.10.0'
+          node <<\EOF
+            const github = require("@actions/github");
+            const core = require("@actions/core");
+            const filterFn = (msg) => /^[^:]+!:/u.test(msg.trim().split("\n")[0]) || /^\s*(?:BREAKING|DEPRECAT(?:E|ION))/mu.test(msg);
+
+            (async () => {
+                const octokit = github.getOctokit(${{ toJSON(github.token) }});
+                const commits = github.context.payload.commits.filter(cm => filterFn(cm.message));
+                if (commits.length == 0) return;
+                const { repo } = github.context;
+                const owner = repo.owner;
+                const name = repo.repo;
+                const discussionNumber = JSON.parse(process.env.DISCUSSION_NUMBER);
+                
+                const discussionId = (await octokit.graphql(`
+                  query($owner: String!, $name: String!, $discussionNumber: Int!) {
+                    repository(owner: $owner, name: $name) {
+                      discussion(number: $discussionNumber) {
+                        id
+                      }
+                    }
+                  }
+                `, {owner, name, discussionNumber})).repository.discussion.id;
+                
+                for (const commit of commits) {
+                  const body = commit.message.split("\n");
+                  body.push("\n" + commit.id);
+
+                  await octokit.graphql(`
+                    mutation ($input: AddDiscussionCommentInput!) {
+                      addDiscussionComment(input: $input) {
+                        comment {
+                          id
+                        }
+                      }
+                    }
+                  `, {input: {body: body.join("\n"), discussionId}});
+                }
+            })();
+          EOF
