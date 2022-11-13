@@ -1,0 +1,25 @@
+name: Prune History
+
+on: 
+  schedule:
+    - cron:  '40 16 * * *'
+  workflow_dispatch:
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Run a multi-line script
+        run: |
+          if [ "$(git rev-list --count HEAD)" -gt 1 ]; then
+            git config --global user.email "$(git show -s --format=%aE)"
+            git config user.name "$(git show -s --format=%aN)"
+            git checkout --orphan hjddnfjgkatuu
+            git add -A
+            git commit -m 'init'
+            git push --force origin "HEAD:$GITHUB_REF"
+          fi
